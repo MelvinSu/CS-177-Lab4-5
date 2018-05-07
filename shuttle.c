@@ -15,25 +15,18 @@ facility rest ("rest");           // dummy facility indicating an idle shuttle
 facility_set *drop_off;
 facility_set *pick_up;
 
-//event get_off_now ("get_off_now");  // all customers can get off shuttle
-//event_set get_off_now ("get_off_now", PLACES_NUM);
 event_set *get_off_now;
-
-//event_set hop_on("board shuttle", PLACES_NUM);  // invite one customer to board at this stop
 event_set *hop_on;
 event boarded ("boarded");             // one customer responds after taking a seat
 
-//event_set shuttle_called ("call button", PLACES_NUM); // call buttons at each location
 event_set *shuttle_called;
 
 void make_passengers(long whereami);       // passenger generator
 
-//string places[2] = {"1", "CarLot"}; // where to generate
 string *places;
 long group_size();
 
 void passenger(long whoam);                // passenger trajectory
-//string people[2] = {"arr_cust","dep_cust"}; // who was generated
 
 void shuttle(long i);                  // trajectory of the shuttle bus consists of...
 void loop_around_airport(long & seats_used, long ID);      // ... repeated trips around airport
