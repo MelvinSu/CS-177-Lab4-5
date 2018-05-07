@@ -32,19 +32,20 @@ void make_passengers(long whereami);       // passenger generator
 string *places;
 long group_size();
 
-void passenger(long whoam, long myid);                // passenger trajectory
+void passenger(long whoam);                // passenger trajectory
 //string people[2] = {"arr_cust","dep_cust"}; // who was generated
 
 void shuttle(long i);                  // trajectory of the shuttle bus consists of...
-void loop_around_airport(long & seats_used);      // ... repeated trips around airport
-void load_shuttle(long whereami, long & on_board); // posssibly loading passengers
-void drop_passengers(long whereami, long & on_board);
+void loop_around_airport(long & seats_used, long ID);      // ... repeated trips around airport
+void load_shuttle(long whereami, long & on_board, long ID); // posssibly loading passengers
+void drop_passengers(long whereami, long & on_board, long ID);
 qtable shuttle_occ("bus occupancy");  // time average of how full is the bus
 
 void shuttle_control(long shuttle_number);
 
 long modP;
-long latestPassenger;
+mailbox_set *busnum_to_passenger;
+mailbox_set *stopnum;
 
 extern "C" void sim(int argc, char** argv)      // main process
 {
@@ -64,6 +65,7 @@ cout << "STUFF" << endl;
   drop_off = new facility_set("drop_off", PLACES_NUM);
   pick_up = new facility_set("pick_up", PLACES_NUM);
   places = new string[PLACES_NUM];
+  busnum_to_passenger = new mailbox_set("shuttle_num_transfer", PLACES_NUM);
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
@@ -104,13 +106,13 @@ void make_passengers(long whereami)
     hold(expntl(10));           // exponential interarrivals, mean 10 minutes
     long group = group_size();
     for (long i=0;i<group;i++)  // create each member of the group
-      passenger(whereami, latestPassenger);      // new passenger appears at this location
+      passenger(whereami);      // new passenger appears at this location
   }
 }
 
 // Model segment 2: activities followed by an individual passenger
 
-void passenger(long whoami, long myid)
+void passenger(long whoami)
 {
   //const char* myName=people[whoami].c_str(); // hack because CSIM wants a char*
   const char* myName;
@@ -127,8 +129,7 @@ void passenger(long whoami, long myid)
       myName = "Lot";
   }
   create(myName);
-  long publicID = myid % modP;
-  long destination;
+  long destination, bus_num;
   if (whoami == PLACES_NUM - 1) //if person spawned at car lot
   {
       destination = uniform_int(0, PLACES_NUM - 2);
@@ -142,6 +143,7 @@ void passenger(long whoami, long myid)
   (*buttons)[whoami].reserve();     // join the queue at my starting location
   (*shuttle_called)[whoami].set();  // head of queue, so call shuttle
   (*hop_on)[whoami].queue();        // wait for shuttle and invitation to board
+  (*busnum_to_passenger)[whoami].receive(&bus_num);
   (*shuttle_called)[whoami].clear();// cancel my call; next in line will push 
   hold(uniform(0.5,1.0));        // takes time to get seated
   boarded.set();                 // tell driver you are in your seat
@@ -155,8 +157,7 @@ void passenger(long whoami, long myid)
 void shuttle_control(long shuttle_number) {
   create ("Shuttle Control");
   for (int i = 0; i <= shuttle_number; i++)
-    shuttle(i);
-  
+    shuttle(i + PLACES_NUM);
 }
 void shuttle(long i) {
   create ("shuttle");
@@ -175,7 +176,7 @@ void shuttle(long i) {
     // Keep going around the loop until there are no calls waiting
     while (((*shuttle_called)[0].state()==OCC)||
            ((*shuttle_called)[PLACES_NUM - 1].state()==OCC)  )
-      loop_around_airport(seats_used);
+      loop_around_airport(seats_used, i);
   }
 }
 
@@ -188,36 +189,10 @@ long group_size() {  // calculates the number of passengers in a group
   }
 }
 
-void loop_around_airport(long & seats_used) { // one trip around the airport
-  // Start by picking up departing passengers at car lot
-//  load_shuttle(CARLOT, seats_used);
-//  shuttle_occ.note_value(seats_used);
-
- // hold (uniform(3,5));  // drive to airport terminal
-
-  // drop off all departing passengers at airport terminal
- // if(seats_used > 0) {
-  //  get_off_now.set(); // open door and let them off
- //   seats_used = 0;
-//    shuttle_occ.note_value(seats_used);
-  //}
-
-  // pick up arriving passengers at airport terminal
- // load_shuttle(TERMNL, seats_used);
-  //shuttle_occ.note_value(seats_used);
-
- // hold (uniform(3,5));  // drive to Hertz car lot
-
-  // drop off all arriving passengers at car lot
- // if(seats_used > 0) {
- //   get_off_now.set(); // open door and let them off
- //   seats_used = 0;
-  //  shuttle_occ.note_value(seats_used);
- // }
-  // Back to starting poina]t. Bus is empty. Maybe I can rest...
+void loop_around_airport(long & seats_used, long ID) { // one trip around the airport
   (*pick_up)[PLACES_NUM - 1].reserve();
   int i = PLACES_NUM - 1;
-  load_shuttle(i, seats_used);
+  load_shuttle(i, seats_used, ID);
   shuttle_occ.note_value(seats_used);
   (*pick_up)[PLACES_NUM - 1].release();
 
@@ -226,12 +201,12 @@ void loop_around_airport(long & seats_used) { // one trip around the airport
   for (int j = 0; j < PLACES_NUM - 1; j++) {
       (*drop_off)[j].reserve();
       if (seats_used > 0) {
-          drop_passengers(j, seats_used);
+          drop_passengers(j, seats_used, ID);
           shuttle_occ.note_value(seats_used);
       }
       (*drop_off)[j].release();
       (*pick_up)[j].reserve();
-      load_shuttle(j, seats_used);
+      load_shuttle(j, seats_used, ID);
       shuttle_occ.note_value(seats_used);
       (*pick_up)[j].release();
       hold (uniform(3,5));
@@ -239,26 +214,27 @@ void loop_around_airport(long & seats_used) { // one trip around the airport
   (*drop_off)[PLACES_NUM - 1].reserve();
   if (seats_used > 0)
   {
-      drop_passengers(PLACES_NUM - 1, seats_used);
+      drop_passengers(PLACES_NUM - 1, seats_used, ID);
       shuttle_occ.note_value(seats_used);
   }
   (*drop_off)[PLACES_NUM - 1].release();
 }
 
-void load_shuttle(long whereami, long & on_board)  // manage passenger loading
+void load_shuttle(long whereami, long & on_board, long ID)  // manage passenger loading
 {
   // invite passengers to enter, one at a time, until all seats are full
   while((on_board < NUM_SEATS) &&
     ((*buttons)[whereami].num_busy() + (*buttons)[whereami].qlength() > 0))
   {
     (*hop_on)[whereami].set();// invite one person to board
+    (*busnum_to_passenger)[whereami].send(ID);
     boarded.wait();  // pause until that person is seated
     on_board++;
     hold(TINY);  // let next passenger (if any) reset the button
   }
 }
 
-void drop_passengers(long whereami, long & on_board)
+void drop_passengers(long whereami, long & on_board, long ID)
 {
    while(on_board > 0)
    {
