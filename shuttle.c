@@ -80,14 +80,11 @@ cout << "STUFF" << endl;
      }
   }
   shuttle_occ.add_histogram(NUM_SEATS+1,0,NUM_SEATS);
-  shuttle_control(2);
-  //make_passengers(TERMNL);  // generate a stream of arriving customers
-  //make_passengers(CARLOT);  // generate a stream of departing customers
+  shuttle_control(1);
   for (int i = 0; i < PLACES_NUM; i++)
   {
       make_passengers(i);
   }
-  //shuttle_control(1);                // create a single shuttle
   hold (1440);              // wait for a whole day (in minutes) to pass
 
   report();
@@ -133,12 +130,10 @@ void passenger(long whoami)
   if (whoami == PLACES_NUM - 1) //if person spawned at car lot
   {
       destination = uniform_int(0, PLACES_NUM - 2);
-      //destination = 0;
   }
   else //if person spawned at a terminal
   {
       destination = PLACES_NUM - 1;
-      //destination = 1;
   }
   (*buttons)[whoami].reserve();     // join the queue at my starting location
   (*shuttle_called)[whoami].set();  // head of queue, so call shuttle
@@ -152,7 +147,6 @@ void passenger(long whoami)
 }
 
 // Model segment 3: the shuttle bus
-
 
 void shuttle_control(long shuttle_number) {
   create ("Shuttle Control");
