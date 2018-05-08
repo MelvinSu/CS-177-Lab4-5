@@ -40,8 +40,8 @@ facility_set *pick_up;
 mailbox_set *busnum_to_passenger;
 mailbox_set *passenger_destination;
 
-mailbox_set *at_stop;
 event_set *just_stopped;
+long *shuttle_loc;
 
 extern "C" void sim(int argc, char** argv)      // main process
 {
@@ -62,8 +62,8 @@ extern "C" void sim(int argc, char** argv)      // main process
   passenger_destination = new mailbox_set("passenger destination",SHUTTLE_NUM);
   drop_off = new facility_set("drop off", PLACES_NUM);
   pick_up = new facility_set("pick up", PLACES_NUM);
-  at_stop = new mailbox_set("shuttle_at", SHUTTLE_NUM);
   just_stopped = new event_set("shuttle has stopped", SHUTTLE_NUM);
+  shuttle_loc = new long[SHUTTLE_NUM];
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
@@ -126,7 +126,8 @@ void passenger(long whoami)
       myName = "Lot";
   }
   create(myName);
-  long destination, bus_num, current;
+  long destination, bus_num;
+  long current = whoami;
   if (whoami == PLACES_NUM - 1) //if person spawned at car lot
   {
       destination = uniform_int(0, PLACES_NUM - 2);
@@ -144,6 +145,10 @@ void passenger(long whoami)
   hold(uniform(0.5,1.0));        // takes time to get seated
   boarded.set();                 // tell driver you are in your seat
   (*buttons)[whoami].release();     // let next person (if any) access buttona
+  while(current != destination) {
+    (*just_stopped)[bus_num].wait();
+    current = shuttle_loc[bus_num];
+  }
   (*get_off_now)[destination].wait();            // everybody off when shuttle reaches next stop
 }
 
@@ -236,6 +241,8 @@ void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
    long temp;
    if(wheretogo[whereami] > 0)
    {
+     shuttle_loc[ID] = whereami;
+     (*just_stopped)[ID].set();
      (*get_off_now)[whereami].set();
      on_board -= wheretogo[whereami];
      wheretogo[whereami] = 0;
