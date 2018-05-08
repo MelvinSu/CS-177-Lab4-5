@@ -40,6 +40,9 @@ facility_set *pick_up;
 mailbox_set *busnum_to_passenger;
 mailbox_set *passenger_destination;
 
+mailbox_set *at_stop;
+event_set *just_stopped;
+
 extern "C" void sim(int argc, char** argv)      // main process
 {
   string filename = "CS177Lab4_";
@@ -55,10 +58,12 @@ extern "C" void sim(int argc, char** argv)      // main process
   hop_on = new event_set ("board_shuttle", PLACES_NUM);
   shuttle_called = new event_set ("call button", PLACES_NUM);
   places = new string[PLACES_NUM];
-  busnum_to_passenger = new mailbox_set["bus to passenger",PLACES_NUM];
-  passenger_destination = new mailbox_set["passenger destination",SHUTTLE_NUM];
-  drop_off = new facility_set["drop off", PLACES_NUM];
-  pick_up = new facility_set["pick up", PLACES_NUM];
+  busnum_to_passenger = new mailbox_set("bus to passenger",PLACES_NUM);
+  passenger_destination = new mailbox_set("passenger destination",SHUTTLE_NUM);
+  drop_off = new facility_set("drop off", PLACES_NUM);
+  pick_up = new facility_set("pick up", PLACES_NUM);
+  at_stop = new mailbox_set("shuttle_at", SHUTTLE_NUM);
+  just_stopped = new event_set("shuttle has stopped", SHUTTLE_NUM);
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
@@ -121,7 +126,7 @@ void passenger(long whoami)
       myName = "Lot";
   }
   create(myName);
-  long destination, bus_num;
+  long destination, bus_num, current;
   if (whoami == PLACES_NUM - 1) //if person spawned at car lot
   {
       destination = uniform_int(0, PLACES_NUM - 2);
@@ -182,28 +187,31 @@ long group_size() {  // calculates the number of passengers in a group
 void loop_around_airport(long & seats_used, long ID, int * wheretogo) { // one trip around the airport
   // Start by picking up departing passengers at car lot
   int i = PLACES_NUM - 1;
+  (*pick_up)[i].reserve();
   load_shuttle(i, seats_used, ID, wheretogo);
   shuttle_occ.note_value(seats_used);
-
+  (*pick_up)[i].release();
   hold (uniform(3,5));
-cout << "seats used: " << seats_used << endl;
-cout << "wheretogo: " << wheretogo[i] << endl;
   for (int j = 0; j < PLACES_NUM - 1; j++) {
+      (*drop_off)[j].reserve();
       if (wheretogo[j] > 0) {
           drop_passengers(j, seats_used, ID, wheretogo);
           shuttle_occ.note_value(seats_used);
       }
+      (*drop_off)[j].release();
+      (*pick_up)[j].reserve();
       load_shuttle(j, seats_used, ID, wheretogo);
       shuttle_occ.note_value(seats_used);
+      (*pick_up)[j].release();
       hold (uniform(3,5));
-cout << "seats used: " << seats_used << endl;
-cout << "wheretogo: " << wheretogo[i] << endl;
   }
+  (*drop_off)[PLACES_NUM - 1].reserve();
   if (wheretogo[PLACES_NUM - 1] > 0)
   {
       drop_passengers(PLACES_NUM - 1, seats_used, ID, wheretogo);
       shuttle_occ.note_value(seats_used);
   }
+  (*drop_off)[PLACES_NUM - 1].release();
 }
 
 void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // manage passenger loading
@@ -226,11 +234,10 @@ void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // 
 void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
 {
    long temp;
-   while(wheretogo[whereami] > 0)
+   if(wheretogo[whereami] > 0)
    {
      (*get_off_now)[whereami].set();
-     (*passenger_destination)[ID].receive(&temp);
-     on_board--;
-     --wheretogo[temp];
+     on_board -= wheretogo[whereami];
+     wheretogo[whereami] = 0;
    }
 }
