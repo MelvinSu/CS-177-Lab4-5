@@ -215,7 +215,7 @@ void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // 
     ((*buttons)[whereami].num_busy() + (*buttons)[whereami].qlength() > 0))
   {
     (*hop_on)[whereami].set();// invite one person to board
-    (*passenger_list)[whereami].send(ID);
+    (*busnum_to_passenger)[whereami].send(ID);
     (*passenger_destination)[ID].receive(&temp);
     boarded.wait();  // pause until that person is seated
     ++wheretogo[temp];
