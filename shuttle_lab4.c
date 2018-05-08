@@ -227,7 +227,7 @@ void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // 
 void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
 {
    long temp;
-   while(wheretogo[whereami] > 0 && on_board > 0)
+   while(wheretogo[whereami])
    {
      (*get_off_now)[whereami].set();
      (*passenger_destination)[ID].receive(&temp);
