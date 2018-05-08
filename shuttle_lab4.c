@@ -10,7 +10,7 @@ using namespace std;
 #define TINY 1.e-20      // a very small time period
 #define TERMNL 0         // named constants for labelling event set
 #define CARLOT 1
-int PLACES_NUM = 2;
+int PLACES_NUM;
 
 facility_set *buttons;  // customer queues at each stop
 facility rest ("rest");           // dummy facility indicating an idle shuttle
@@ -41,12 +41,14 @@ void load_shuttle(long whereami, long & on_board); // posssibly loading passenge
 void drop_passengers(long whereami, long & on_board);
 qtable shuttle_occ("bus occupancy");  // time average of how full is the bus
 
+int *list;
+
 extern "C" void sim(int argc, char** argv)      // main process
 {
   string filename = "CS177Lab4_";
   filename += *argv[1];
   filename += "_Places.txt";
-  freopen (filename.c_str(), "w", stdout);
+  //freopen (filename.c_str(), "w", stdout);
   PLACES_NUM = *argv[1] - '0';
   cout << PLACES_NUM << endl;
   create("sim");
@@ -55,6 +57,7 @@ extern "C" void sim(int argc, char** argv)      // main process
   hop_on = new event_set ("board_shuttle", PLACES_NUM);
   shuttle_called = new event_set ("call button", PLACES_NUM);
   places = new string[PLACES_NUM];
+  list = new int[PLACES_NUM];
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
@@ -67,6 +70,7 @@ extern "C" void sim(int argc, char** argv)      // main process
      {
          places[i] = "CarLot";
      }
+     list[i]=0;
   }
   shuttle_occ.add_histogram(NUM_SEATS+1,0,NUM_SEATS);
   //make_passengers(TERMNL);  // generate a stream of arriving customers
@@ -120,12 +124,13 @@ void passenger(long whoami)
   long destination;
   if (whoami == PLACES_NUM - 1) //if person spawned at car lot
   {
-      destination = 1;
+      destination = uniform_int(0, PLACES_NUM - 2);
   }
   else //if person spawned at a terminal
   {
-      destination = 0;
+      destination = PLACES_NUM - 1;
   }
+  ++list[destination];
   (*buttons)[whoami].reserve();     // join the queue at my starting location
   (*shuttle_called)[whoami].set();  // head of queue, so call shuttle
   (*hop_on)[whoami].queue();        // wait for shuttle and invitation to board
@@ -232,9 +237,10 @@ void load_shuttle(long whereami, long & on_board)  // manage passenger loading
 
 void drop_passengers(long whereami, long & on_board)
 {
-   while(on_board > 0)
+   while(list[whereami] > 0 && on_board > 0)
    {
      (*get_off_now)[whereami].set();
      on_board--;
+     --list[whereami];
    }
 }
