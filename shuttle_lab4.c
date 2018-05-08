@@ -32,7 +32,7 @@ void passenger(long whoami);                // passenger trajectory
 void shuttle(int number);                  // trajectory of the shuttle bus consists of...
 void loop_around_airport(long & seats_used, long ID, int * wheretogo);      // ... repeated trips around airport
 void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo); // posssibly loading passengers
-void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
+void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo);
 qtable shuttle_occ("bus occupancy");  // time average of how full is the bus
 
 int *list;
@@ -57,10 +57,10 @@ extern "C" void sim(int argc, char** argv)      // main process
   shuttle_called = new event_set ("call button", PLACES_NUM);
   places = new string[PLACES_NUM];
   list = new int[PLACES_NUM];
-  busnum_to_passenger = new mailbox_set[PLACES_NUM];
-  passenger_destination = new mailbox_set[SHUTTLE_NUM];
-  drop_off = new facility_set[PLACES_NUM];
-  pick_up = new facility_set[PLACES_NUM];
+  busnum_to_passenger = new mailbox_set["bus to passenger",PLACES_NUM];
+  passenger_destination = new mailbox_set["passenger destination",SHUTTLE_NUM];
+  drop_off = new facility_set["drop off", PLACES_NUM];
+  pick_up = new facility_set["pick up", PLACES_NUM];
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
