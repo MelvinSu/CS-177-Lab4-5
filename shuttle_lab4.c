@@ -35,7 +35,6 @@ void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo); // 
 void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo);
 qtable shuttle_occ("bus occupancy");  // time average of how full is the bus
 
-int *list;
 facility_set *drop_off;
 facility_set *pick_up;
 mailbox_set *busnum_to_passenger;
@@ -56,7 +55,6 @@ extern "C" void sim(int argc, char** argv)      // main process
   hop_on = new event_set ("board_shuttle", PLACES_NUM);
   shuttle_called = new event_set ("call button", PLACES_NUM);
   places = new string[PLACES_NUM];
-  list = new int[PLACES_NUM];
   busnum_to_passenger = new mailbox_set["bus to passenger",PLACES_NUM];
   passenger_destination = new mailbox_set["passenger destination",SHUTTLE_NUM];
   drop_off = new facility_set["drop off", PLACES_NUM];
@@ -73,7 +71,6 @@ extern "C" void sim(int argc, char** argv)      // main process
      {
          places[i] = "CarLot";
      }
-     list[i]=0;
   }
   shuttle_occ.add_histogram(NUM_SEATS+1,0,NUM_SEATS);
   for (int i = 0; i < PLACES_NUM; i++)
@@ -133,7 +130,6 @@ void passenger(long whoami)
   {
       destination = PLACES_NUM - 1;
   }
-  ++list[destination];
   (*buttons)[whoami].reserve();     // join the queue at my starting location
   (*shuttle_called)[whoami].set();  // head of queue, so call shuttle
   (*hop_on)[whoami].queue();        // wait for shuttle and invitation to board
@@ -190,17 +186,20 @@ void loop_around_airport(long & seats_used, long ID, int * wheretogo) { // one t
   shuttle_occ.note_value(seats_used);
 
   hold (uniform(3,5));
-
+cout << "seats used: " << seats_used << endl;
+cout << "wheretogo: " << wheretogo[i] << endl;
   for (int j = 0; j < PLACES_NUM - 1; j++) {
-      if (seats_used > 0) {
+      if (wheretogo[j] > 0) {
           drop_passengers(j, seats_used, ID, wheretogo);
           shuttle_occ.note_value(seats_used);
       }
       load_shuttle(j, seats_used, ID, wheretogo);
       shuttle_occ.note_value(seats_used);
       hold (uniform(3,5));
+cout << "seats used: " << seats_used << endl;
+cout << "wheretogo: " << wheretogo[i] << endl;
   }
-  if (seats_used > 0)
+  if (wheretogo[PLACES_NUM - 1] > 0)
   {
       drop_passengers(PLACES_NUM - 1, seats_used, ID, wheretogo);
       shuttle_occ.note_value(seats_used);
@@ -227,12 +226,11 @@ void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // 
 void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
 {
    long temp;
-   while(wheretogo[whereami])
+   while(wheretogo[whereami] > 0)
    {
      (*get_off_now)[whereami].set();
      (*passenger_destination)[ID].receive(&temp);
      on_board--;
      --wheretogo[temp];
-     --list[whereami];
    }
 }
