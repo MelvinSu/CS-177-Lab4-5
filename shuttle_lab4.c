@@ -60,7 +60,7 @@ extern "C" void sim(int argc, char** argv)      // main process
   busnum_to_passenger = new mailbox_set[PLACES_NUM];
   passenger_destination = new mailbox_set[SHUTTLE_NUM];
   drop_off = new facility_set[PLACES_NUM];
-  pick_ip = new facility_set[PLACES_NUM];
+  pick_up = new facility_set[PLACES_NUM];
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
@@ -137,7 +137,7 @@ void passenger(long whoami)
   (*buttons)[whoami].reserve();     // join the queue at my starting location
   (*shuttle_called)[whoami].set();  // head of queue, so call shuttle
   (*hop_on)[whoami].queue();        // wait for shuttle and invitation to board
-  (*busnum_to_passenger)[whoami].recieve(&bus_num);
+  (*busnum_to_passenger)[whoami].receive(&bus_num);
   (*passenger_destination)[bus_num].send(destination);
   (*shuttle_called)[whoami].clear();// cancel my call; next in line will push 
   hold(uniform(0.5,1.0));        // takes time to get seated
@@ -170,7 +170,7 @@ void shuttle(int number) {
     // Keep going around the loop until there are no calls waiting
     while (((*shuttle_called)[TERMNL].state()==OCC)||
            ((*shuttle_called)[CARLOT].state()==OCC)  )
-      loop_around_airport(seats_used, i, wheretogo);
+      loop_around_airport(seats_used, number, wheretogo);
   }
 }
 
@@ -186,23 +186,23 @@ long group_size() {  // calculates the number of passengers in a group
 void loop_around_airport(long & seats_used, long ID, int * wheretogo) { // one trip around the airport
   // Start by picking up departing passengers at car lot
   int i = PLACES_NUM - 1;
-  load_shuttle(i, seats_used);
+  load_shuttle(i, seats_used, ID, wheretogo);
   shuttle_occ.note_value(seats_used);
 
   hold (uniform(3,5));
 
   for (int j = 0; j < PLACES_NUM - 1; j++) {
       if (seats_used > 0) {
-          drop_passengers(j, seats_used);
+          drop_passengers(j, seats_used, ID, wheretogo);
           shuttle_occ.note_value(seats_used);
       }
-      load_shuttle(j, seats_used);
+      load_shuttle(j, seats_used, ID, wheretogo);
       shuttle_occ.note_value(seats_used);
       hold (uniform(3,5));
   }
   if (seats_used > 0)
   {
-      drop_passengers(PLACES_NUM - 1, seats_used);
+      drop_passengers(PLACES_NUM - 1, seats_used, ID, wheretogo);
       shuttle_occ.note_value(seats_used);
   }
 }
@@ -216,7 +216,7 @@ void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // 
   {
     (*hop_on)[whereami].set();// invite one person to board
     (*passenger_list)[whereami].send(ID);
-    (*passenger_destination)[ID].recieve(&temp);
+    (*passenger_destination)[ID].receive(&temp);
     boarded.wait();  // pause until that person is seated
     ++wheretogo[temp];
     on_board++;
@@ -230,7 +230,7 @@ void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
    while(wheretogo[whereami] > 0 && on_board > 0)
    {
      (*get_off_now)[whereami].set();
-     (*passenger_destination)[ID].recieve(&temp);
+     (*passenger_destination)[ID].receive(&temp);
      on_board--;
      --wheretogo[temp];
      --list[whereami];
