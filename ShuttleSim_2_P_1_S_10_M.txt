@@ -1,0 +1,60 @@
+            C++/CSIM Simulation Report (Version 19.0 for Linux x86)
+
+                           Wed May  9 16:45:30 2018
+
+
+                     Ending simulation time:      1440.000
+                     Elapsed simulation time:     1440.000
+                     CPU time used (seconds):        0.000
+
+
+FACILITY SUMMARY 
+
+facility     service    service          through-    queue     response   compl
+name           disc      time    util.     put       length      time     count
+--------------------------------------------------------------------------------
+readying sh  fcfs       0.46341  0.026    0.05694    0.02639    0.46341       82
+Curb[0]      fcfs       2.97598  0.922    0.30972   24.83690   80.19087      446
+Curb[1]      fcfs       3.26941  0.749    0.22917    4.23516   18.48071      330
+drop off[0]  fcfs       0.00000  0.000    0.05694    0.00000    0.00000       82
+drop off[1]  fcfs       0.00000  0.000    0.05694    0.00000    0.00000       82
+pick up[0]   fcfs       4.07192  0.232    0.05694    0.23187    4.07192       82
+pick up[1]   fcfs       3.00024  0.171    0.05694    0.17085    3.00024       82
+resting[0]   fcfs       0.00000  0.000    0.05764    0.00000    0.00000       83
+
+
+
+QTABLE 1:  bus occupancy
+
+      initial       0      minimum       0      mean                    2.147284
+      final         0      maximum       6      variance                7.345534
+      entries     776      range         6      standard deviation      2.710265
+      exits       776                           coeff of variation      1.262183
+
+                                             cumulative
+        number    total time    proportion   proportion
+
+             0     833.37607     0.578733     0.578733   ********************
+             1      18.56897     0.012895     0.591628   .
+             2      66.12428     0.045920     0.637548   **                  
+             3      26.68658     0.018532     0.656080   *                   
+             4      38.95568     0.027053     0.683133   *                   
+             5      32.34160     0.022459     0.705592   *                   
+ >=          6     423.94683     0.294408     1.000000   **********          
+
+STATUS OF FACILITIES 
+
+                busy     queue  
+name.id        servers   length        processes
+--------------------------------------------------------------------------------
+readying sh.2   1 of 1      0    serv: shuttle.4                                
+Curb[0].8       1 of 1      1    serv: T1.784                                   
+                                queue: T1.785                                   
+Curb[1].9       1 of 1      2    serv: Lot.781                                  
+                                queue: Lot.782       Lot.783                    
+drop off[0].2   0 of 1      0    serv: idle                                     
+drop off[1].2   0 of 1      0    serv: idle                                     
+pick up[0].26   0 of 1      0    serv: idle                                     
+pick up[1].27   0 of 1      0    serv: idle                                     
+resting[0].30   0 of 1      0    serv: idle                                     
+                                                                                
