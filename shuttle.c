@@ -4,62 +4,89 @@
 #include <iostream>
 #include "cpp.h"
 #include <string.h>
+#include <cmath>
+#include <sstream>
 using namespace std;
 
 #define NUM_SEATS 6      // number of seats available on shuttle
 #define TINY 1.e-20      // a very small time period
-int PLACES_NUM = 2;
+#define TERMNL 0         // named constants for labelling event set
+#define CARLOT 1
+long PLACES_NUM, SHUTTLE_NUM, MEAN_INTERVAL;
 
 facility_set *buttons;  // customer queues at each stop
 //facility rest ("rest");           // dummy facility indicating an idle shuttle
 facility_set *rest;
-facility_set *drop_off;
-facility_set *pick_up;
 
-event_set *get_off_now;
-event_set *hop_on;
+event_set *get_off_now; //tell person to get off shuttle
+
+event_set *hop_on; //tell person to get on shuttle
 event boarded ("boarded");             // one customer responds after taking a seat
 
-event_set *shuttle_called;
+//event_set *shuttle_called; //call button control
 
 void make_passengers(long whereami);       // passenger generator
 
 string *places;
 long group_size();
 
-void passenger(long whoam);                // passenger trajectory
+void passenger(long whoami);                // passenger trajectory
 
-void shuttle(long i);                  // trajectory of the shuttle bus consists of...
+void shuttle(int number);                  // trajectory of the shuttle bus consists of...
 void loop_around_airport(long & seats_used, long ID, int * wheretogo);      // ... repeated trips around airport
 void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo); // posssibly loading passengers
 void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo);
 qtable shuttle_occ("bus occupancy");  // time average of how full is the bus
 
-void shuttle_control(long shuttle_number);
-
+facility_set *drop_off;
+facility_set *pick_up;
 mailbox_set *busnum_to_passenger;
-mailbox_set *bus_stopped;
-mailbox_set *passenger_list;
+mailbox_set *passenger_destination;
+
+event_set *just_stopped;
+long *shuttle_loc;
+long inactive_shuttles = 0;
+facility readying_shuttle("readying shuttle");
 
 extern "C" void sim(int argc, char** argv)      // main process
 {
-//  string filename = "CS177Lab4_";
-//  filename += *argv[1];
- // filename += "_Places.txt";
-//  freopen (filename.c_str(), "w", stdout);
-  PLACES_NUM = *argv[1] - '0';
+  string filename = "ShuttleSim_";
+  stringstream str, str2, str3;
+  char **temp = argv;
+  long ltemp , ltemp2, ltemp3;
+  ++temp;
+  str << *temp;
+  str >> ltemp;
+  filename += *temp;
+  filename += "_P_";
+  PLACES_NUM = ltemp;
+  ++temp;
+  str2 << *temp;
+  str2 >> ltemp2;
+  filename += *temp;
+  filename += "_S_";
+  SHUTTLE_NUM = ltemp2;
+  ++temp;
+  str3 << *temp;
+  str3 >> ltemp3;
+  filename += *temp;
+  filename += "_M.txt";
+  MEAN_INTERVAL = ltemp3;
+  freopen (filename.c_str(), "w", stdout);
+
   create("sim");
   buttons = new facility_set("Curb", PLACES_NUM);
-  rest = new facility_set("resting", 4);
   get_off_now = new event_set ("get_off_now", PLACES_NUM);
   hop_on = new event_set ("board_shuttle", PLACES_NUM);
-  shuttle_called = new event_set ("call button", PLACES_NUM);
-  drop_off = new facility_set("drop_off", PLACES_NUM);
-  pick_up = new facility_set("pick_up", PLACES_NUM);
   places = new string[PLACES_NUM];
-  busnum_to_passenger = new mailbox_set("shuttle_num_transfer", PLACES_NUM);
-  bus_stopped = new mailbox_set("bus_has_stopped", 4);
-  passenger_list = new mailbox_set("passengers_destination", 4);
+  busnum_to_passenger = new mailbox_set("bus to passenger",PLACES_NUM);
+  passenger_destination = new mailbox_set("passenger destination",SHUTTLE_NUM);
+  drop_off = new facility_set("drop off", PLACES_NUM);
+  pick_up = new facility_set("pick up", PLACES_NUM);
+  just_stopped = new event_set("shuttle has stopped", SHUTTLE_NUM);
+  shuttle_loc = new long[SHUTTLE_NUM];
+  rest = new facility_set("resting", SHUTTLE_NUM);
+
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
@@ -74,12 +101,15 @@ extern "C" void sim(int argc, char** argv)      // main process
      }
   }
   shuttle_occ.add_histogram(NUM_SEATS+1,0,NUM_SEATS);
-  shuttle_control(1);
   for (int i = 0; i < PLACES_NUM; i++)
   {
       make_passengers(i);
   }
-  hold (1000);              // wait for a whole day (in minutes) to pass
+  for (int i = 0; i < SHUTTLE_NUM; i++)
+  {
+    shuttle(i);                // create a single shuttle
+  }
+  hold (1440);              // wait for a whole day (in minutes) to pass
 
   report();
   status_facilities();
@@ -92,9 +122,9 @@ void make_passengers(long whereami)
   const char* myName=places[whereami].c_str(); // hack because CSIM wants a char*
   create(myName);
 
-  while(clock < 1000.)          // run for one day (in minutes)
+  while(clock < 1440.)          // run for one day (in minutes)
   {
-    hold(expntl(10));           // exponential interarrivals, mean 10 minutes
+    hold(expntl(MEAN_INTERVAL));           // exponential interarrivals, mean 10 minutes
     long group = group_size();
     for (long i=0;i<group;i++)  // create each member of the group
       passenger(whereami);      // new passenger appears at this location
@@ -105,7 +135,6 @@ void make_passengers(long whereami)
 
 void passenger(long whoami)
 {
-  //const char* myName=people[whoami].c_str(); // hack because CSIM wants a char*
   const char* myName;
   if (whoami < PLACES_NUM - 1)
   {
@@ -121,6 +150,7 @@ void passenger(long whoami)
   }
   create(myName);
   long destination, bus_num;
+  long current = whoami;
   if (whoami == PLACES_NUM - 1) //if person spawned at car lot
   {
       destination = uniform_int(0, PLACES_NUM - 2);
@@ -130,48 +160,55 @@ void passenger(long whoami)
       destination = PLACES_NUM - 1;
   }
   (*buttons)[whoami].reserve();     // join the queue at my starting location
-  (*shuttle_called)[whoami].set();  // head of queue, so call shuttle
   (*hop_on)[whoami].queue();        // wait for shuttle and invitation to board
   (*busnum_to_passenger)[whoami].receive(&bus_num);
-  (*passenger_list)[bus_num].send(destination);
-  (*shuttle_called)[whoami].clear();// cancel my call; next in line will push 
+  (*passenger_destination)[bus_num].send(destination);
   hold(uniform(0.5,1.0));        // takes time to get seated
   boarded.set();                 // tell driver you are in your seat
-  (*buttons)[whoami].release();     // let next person (if any) access buttona
+  (*buttons)[whoami].release();     // let next person (if any) access buttonaa
+  while(current != destination) {
+    (*just_stopped)[bus_num].wait();
+    current = shuttle_loc[bus_num];
+  }
   (*get_off_now)[destination].wait();            // everybody off when shuttle reaches next stop
-  (*passenger_list)[bus_num].send(destination);
 }
 
 // Model segment 3: the shuttle bus
 
-void shuttle_control(long shuttle_number) {
-  create ("Shuttle Control");
-  for (int i = 1; i <= shuttle_number; i++)
-    shuttle(i);
-}
-void shuttle(long i) {
+void shuttle(int number) {
   create ("shuttle");
   while(1) {  // loop forever
     // start off in idle state, waiting for the first call...
-    (*rest)[i].reserve();                   // relax at garage till called from somewhere
+    (*rest)[number].reserve();                   // relax at garage till called from somewhere
+    ++inactive_shuttles;
     int wheretogo[PLACES_NUM];
-for (int i = 0; i < PLACES_NUM; i++)
-{
-    wheretogo[i] = 0;
-    cout << "INTI: " << i << " " << wheretogo[i] << endl;
-}
-    long who_pushed = (*shuttle_called).wait_any();
-    (*shuttle_called)[who_pushed].set(); // loop exit needs to see event
-    (*rest)[i].release();                   // and back to work we go!
+    long holding;
+    for (int i = 0; i < PLACES_NUM; i++)
+    {
+      wheretogo[i] = 0;
+    }
+    (*rest)[number].release();                   // and back to work we go!
     long seats_used = 0;              // shuttle is initially empty
     shuttle_occ.note_value(seats_used);
-
+    --inactive_shuttles;
+    readying_shuttle.reserve();
+    long count = 0;
+    for (int i = 0; i < PLACES_NUM; i++)
+      count += (*hop_on)[i].queue_cnt();
+    if (count > 0) {
+      holding = ((1) / (abs(count - (inactive_shuttles * NUM_SEATS)))) + .01;
+      holding = uniform(holding -(holding * .3), holding + (holding * .3));
+    }
+    else
+      holding = MEAN_INTERVAL / SHUTTLE_NUM;
+    hold(holding);
+    readying_shuttle.release();
     hold(2);  // 2 minutes to reach car lot stop
-
-    // Keep going around the loop until there are no calls waiting
-    while (((*shuttle_called)[0].state()==OCC)||
-           ((*shuttle_called)[PLACES_NUM - 1].state()==OCC) || seats_used > 0)
-      loop_around_airport(seats_used, i, wheretogo);
+    
+    loop_around_airport(seats_used, number, wheretogo);
+    while (seats_used > 0) {
+      loop_around_airport(seats_used, number, wheretogo);
+    }
   }
 }
 
@@ -185,27 +222,24 @@ long group_size() {  // calculates the number of passengers in a group
 }
 
 void loop_around_airport(long & seats_used, long ID, int * wheretogo) { // one trip around the airport
-  (*pick_up)[PLACES_NUM - 1].reserve();
+  // Start by picking up departing passengers at car lot
   int i = PLACES_NUM - 1;
+  (*pick_up)[i].reserve();
   load_shuttle(i, seats_used, ID, wheretogo);
   shuttle_occ.note_value(seats_used);
-  (*pick_up)[PLACES_NUM - 1].release();
-cout << "Seats used: " << seats_used << endl;
+  (*pick_up)[i].release();
   hold (uniform(3,5));
   for (int j = 0; j < PLACES_NUM - 1; j++) {
-cout << ID  << " : " << j << " has " << wheretogo[j] << " waiting for them" << endl;
       (*drop_off)[j].reserve();
       if (wheretogo[j] > 0) {
           drop_passengers(j, seats_used, ID, wheretogo);
           shuttle_occ.note_value(seats_used);
-cout << ID  << " : Dropped off at " << j << endl;
       }
       (*drop_off)[j].release();
       (*pick_up)[j].reserve();
       load_shuttle(j, seats_used, ID, wheretogo);
       shuttle_occ.note_value(seats_used);
       (*pick_up)[j].release();
-cout << "Seats used: " << seats_used << endl;
       hold (uniform(3,5));
   }
   (*drop_off)[PLACES_NUM - 1].reserve();
@@ -226,10 +260,9 @@ void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // 
   {
     (*hop_on)[whereami].set();// invite one person to board
     (*busnum_to_passenger)[whereami].send(ID);
-    (*passenger_list)[ID].receive(&temp);
-cout << ID << " : Person from " << whereami << " wants to go to " << temp << endl;
-    ++wheretogo[temp];
+    (*passenger_destination)[ID].receive(&temp);
     boarded.wait();  // pause until that person is seated
+    ++wheretogo[temp];
     on_board++;
     hold(TINY);  // let next passenger (if any) reset the button
   }
@@ -238,12 +271,16 @@ cout << ID << " : Person from " << whereami << " wants to go to " << temp << end
 void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
 {
    long temp;
-   while(wheretogo[whereami] > 0)
+   if(wheretogo[whereami] > 0)
    {
+     shuttle_loc[ID] = whereami;
+     (*just_stopped)[ID].set();
      (*get_off_now)[whereami].set();
-     (*passenger_list)[ID].receive(&temp);
-     --wheretogo[temp];
-cout << ID << " : Person has gotten off at " << whereami << endl;
-     on_board--;
+     on_board -= wheretogo[whereami];
+     wheretogo[whereami] = 0;
    }
 }
+// Simulation of the Hertz airport shuttle bus, which picks up passengers
+// from the airport terminal building going to the Hertz rental car lot.
+// Simulation of the Hertz airport shuttle bus, which picks up passengers
+// from the airport terminal building going to the Hertz rental car lot.
