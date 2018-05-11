@@ -171,8 +171,7 @@ void passenger(long whoami)
 // Model segment 3: the shuttle bus
 //Shuttle
 //when shuttle is created, it goes into its reseting state, increments inactive_shuttles and initializes
-//other variables. When a person presses the buttons to signals for the shuttles, a random shuttle will 
-//ready up 
+//other variables. When a person presses the buttons to signals for the shuttles, a random shuttle that has reserved the readying_shuttle facility will prepare to leave
 void shuttle(int number) {
   create ("shuttle");
   while(1) {  // loop forever
