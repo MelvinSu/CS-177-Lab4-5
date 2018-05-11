@@ -15,8 +15,8 @@ using namespace std;
 long PLACES_NUM, SHUTTLE_NUM, MEAN_INTERVAL;
 
 facility_set *buttons;  // customer queues at each stop
-//facility rest ("rest");           // dummy facility indicating an idle shuttle
 facility_set *rest;
+event_set *shuttle_called;
 
 event_set *get_off_now; //tell person to get off shuttle
 
@@ -46,6 +46,8 @@ mailbox_set *passenger_destination;
 event_set *just_stopped;
 long *shuttle_loc;
 long inactive_shuttles = 0;
+int *deliver_count;
+event shuttle_line ("Shuttle_queue");
 facility readying_shuttle("readying shuttle");
 
 extern "C" void sim(int argc, char** argv)      // main process
@@ -72,12 +74,13 @@ extern "C" void sim(int argc, char** argv)      // main process
   filename += *temp;
   filename += "_M.txt";
   MEAN_INTERVAL = ltemp3;
-  freopen (filename.c_str(), "w", stdout);
+  //freopen (filename.c_str(), "w", stdout);
 
   create("sim");
   buttons = new facility_set("Curb", PLACES_NUM);
   get_off_now = new event_set ("get_off_now", PLACES_NUM);
   hop_on = new event_set ("board_shuttle", PLACES_NUM);
+  shuttle_called = new event_set ("call button", PLACES_NUM);
   places = new string[PLACES_NUM];
   busnum_to_passenger = new mailbox_set("bus to passenger",PLACES_NUM);
   passenger_destination = new mailbox_set("passenger destination",SHUTTLE_NUM);
@@ -86,7 +89,7 @@ extern "C" void sim(int argc, char** argv)      // main process
   just_stopped = new event_set("shuttle has stopped", SHUTTLE_NUM);
   shuttle_loc = new long[SHUTTLE_NUM];
   rest = new facility_set("resting", SHUTTLE_NUM);
-
+  deliver_count = new int[SHUTTLE_NUM];
   for (int i = 0; i < PLACES_NUM; i++)
   {
      if (i != PLACES_NUM - 1)
@@ -108,6 +111,7 @@ extern "C" void sim(int argc, char** argv)      // main process
   for (int i = 0; i < SHUTTLE_NUM; i++)
   {
     shuttle(i);                // create a single shuttle
+    deliver_count[i] = 0;
   }
   hold (1440);              // wait for a whole day (in minutes) to pass
 
@@ -135,19 +139,7 @@ void make_passengers(long whereami)
 
 void passenger(long whoami)
 {
-  const char* myName;
-  if (whoami < PLACES_NUM - 1)
-  {
-      char temp[3];
-      char p[] = "T";
-      sprintf(temp, "%d", whoami + 1);
-      strcat(p, temp);
-      myName = p;
-  }
-  else
-  {
-      myName = "Lot";
-  }
+  const char* myName = "Person";
   create(myName);
   long destination, bus_num;
   long current = whoami;
@@ -159,13 +151,16 @@ void passenger(long whoami)
   {
       destination = PLACES_NUM - 1;
   }
+  
   (*buttons)[whoami].reserve();     // join the queue at my starting location
+  (*shuttle_called)[whoami].set();
   (*hop_on)[whoami].queue();        // wait for shuttle and invitation to board
+  (*shuttle_called)[whoami].clear();
   (*busnum_to_passenger)[whoami].receive(&bus_num);
   (*passenger_destination)[bus_num].send(destination);
   hold(uniform(0.5,1.0));        // takes time to get seated
   boarded.set();                 // tell driver you are in your seat
-  (*buttons)[whoami].release();     // let next person (if any) access buttonaa
+  (*buttons)[whoami].release();     // let next person (if any) access button
   while(current != destination) {
     (*just_stopped)[bus_num].wait();
     current = shuttle_loc[bus_num];
@@ -174,7 +169,10 @@ void passenger(long whoami)
 }
 
 // Model segment 3: the shuttle bus
-
+//Shuttle
+//when shuttle is created, it goes into its reseting state, increments inactive_shuttles and initializes
+//other variables. When a person presses the buttons to signals for the shuttles, a random shuttle will 
+//ready up 
 void shuttle(int number) {
   create ("shuttle");
   while(1) {  // loop forever
@@ -183,25 +181,30 @@ void shuttle(int number) {
     ++inactive_shuttles;
     int wheretogo[PLACES_NUM];
     long holding;
+    long seats_used = 0;
     for (int i = 0; i < PLACES_NUM; i++)
     {
       wheretogo[i] = 0;
     }
+    readying_shuttle.reserve();
     (*rest)[number].release();                   // and back to work we go!
-    long seats_used = 0;              // shuttle is initially empty
+
+    long who_pushed = (*shuttle_called).wait_any();
+    (*shuttle_called)[who_pushed].set();
     shuttle_occ.note_value(seats_used);
     --inactive_shuttles;
-    readying_shuttle.reserve();
+    
     long count = 0;
     for (int i = 0; i < PLACES_NUM; i++)
       count += (*hop_on)[i].queue_cnt();
     if (count > 0) {
-      holding = ((1) / (abs(count - (inactive_shuttles * NUM_SEATS)))) + .01;
-      holding = uniform(holding -(holding * .3), holding + (holding * .3));
+    //  holding = ((MEAN_INTERVAL) / (abs(count - (inactive_shuttles * NUM_SEATS)))) + .01;
     }
     else
-      holding = MEAN_INTERVAL / SHUTTLE_NUM;
+     // holding = abs(SHUTTLE_NUM - MEAN_INTERVAL);
+    holding = 0;
     hold(holding);
+    
     readying_shuttle.release();
     hold(2);  // 2 minutes to reach car lot stop
     
@@ -224,6 +227,13 @@ long group_size() {  // calculates the number of passengers in a group
 void loop_around_airport(long & seats_used, long ID, int * wheretogo) { // one trip around the airport
   // Start by picking up departing passengers at car lot
   int i = PLACES_NUM - 1;
+  (*drop_off)[i].reserve();
+  if (wheretogo[i] > 0)
+  {
+      drop_passengers(i, seats_used, ID, wheretogo);
+      shuttle_occ.note_value(seats_used);
+  }
+  (*drop_off)[i].release();
   (*pick_up)[i].reserve();
   load_shuttle(i, seats_used, ID, wheretogo);
   shuttle_occ.note_value(seats_used);
@@ -242,13 +252,6 @@ void loop_around_airport(long & seats_used, long ID, int * wheretogo) { // one t
       (*pick_up)[j].release();
       hold (uniform(3,5));
   }
-  (*drop_off)[PLACES_NUM - 1].reserve();
-  if (wheretogo[PLACES_NUM - 1] > 0)
-  {
-      drop_passengers(PLACES_NUM - 1, seats_used, ID, wheretogo);
-      shuttle_occ.note_value(seats_used);
-  }
-  (*drop_off)[PLACES_NUM - 1].release();
 }
 
 void load_shuttle(long whereami, long & on_board, long ID, int * wheretogo)  // manage passenger loading
@@ -277,6 +280,7 @@ void drop_passengers(long whereami, long & on_board, long ID, int * wheretogo)
      (*just_stopped)[ID].set();
      (*get_off_now)[whereami].set();
      on_board -= wheretogo[whereami];
+     deliver_count += on_board;
      wheretogo[whereami] = 0;
    }
 }
